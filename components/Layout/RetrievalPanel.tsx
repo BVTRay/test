@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Filter, Folder, MoreHorizontal, Check, Archive, Calendar, LayoutGrid, Clapperboard, X, ChevronDown, User, Users, PlayCircle, Settings, Trash2, Lock } from 'lucide-react';
+import { Search, Plus, Folder, MoreHorizontal, Check, Archive, Calendar, LayoutGrid, Clapperboard, X, ChevronDown, User, Users, PlayCircle, Settings, Trash2, Lock } from 'lucide-react';
 import { useStore } from '../../App';
 import { Project } from '../../types';
 
@@ -375,7 +375,15 @@ export const RetrievalPanel: React.FC = () => {
   );
 
   const renderShowcaseMonthTree = () => {
-      const caseVideos = videos.filter(v => v.isCaseFile);
+      let caseVideos = videos.filter(v => v.isCaseFile);
+      
+      // 根据搜索关键词过滤案例文件
+      if (searchTerm.trim()) {
+          caseVideos = caseVideos.filter(v => 
+              v.name.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+      }
+      
       const months = {
           '2025年 1月': caseVideos.filter((_, i) => i % 2 === 0),
           '2024年 12月': caseVideos.filter((_, i) => i % 2 !== 0),
@@ -398,13 +406,19 @@ export const RetrievalPanel: React.FC = () => {
                                 className="flex items-center gap-2 p-2 rounded hover:bg-zinc-900 cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors"
                               >
                                   <Clapperboard className="w-3.5 h-3.5" />
-                                  <span className="text-sm truncate">{v.name}</span>
+                                  <span className="text-sm truncate">
+                                      <HighlightText text={v.name} highlight={searchTerm} />
+                                  </span>
                               </div>
                           ))}
                       </div>
                   </div>
               ))}
-              {caseVideos.length === 0 && <div className="text-xs text-zinc-500 italic p-2">未标记案例视频。</div>}
+              {caseVideos.length === 0 && (
+                  <div className="text-xs text-zinc-500 italic p-2">
+                      {searchTerm.trim() ? '未找到匹配的案例视频。' : '未标记案例视频。'}
+                  </div>
+              )}
           </div>
       );
   };
@@ -421,26 +435,24 @@ export const RetrievalPanel: React.FC = () => {
                 {activeModule === 'showcase' && '案例遴选'}
             </span>
             <div className="flex items-center gap-1">
-            <div className="flex items-center bg-zinc-950 rounded-lg p-0.5 mr-2 border border-zinc-800">
+            <div className="flex items-center bg-zinc-950 rounded-lg p-1 mr-2 border border-zinc-800 gap-1">
                 <button 
                     onClick={() => setViewMode('month')}
-                    className={`p-1 rounded transition-colors ${viewMode === 'month' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 font-medium text-sm ${viewMode === 'month' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="月份视图"
                 >
-                    <Calendar className="w-3.5 h-3.5" />
+                    <Calendar className="w-4 h-4" />
+                    <span>月份</span>
                 </button>
                 <button 
                     onClick={() => setViewMode('group')}
-                    className={`p-1 rounded transition-colors ${viewMode === 'group' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 font-medium text-sm ${viewMode === 'group' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="分组视图"
                 >
-                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <LayoutGrid className="w-4 h-4" />
+                    <span>分组</span>
                 </button>
             </div>
-
-            <button className="p-1.5 hover:bg-zinc-900 rounded text-zinc-500 hover:text-zinc-300 transition-colors">
-                <Filter className="w-4 h-4" />
-            </button>
             
             {/* New Project Button - Prominent */}
             {activeModule === 'review' && (
