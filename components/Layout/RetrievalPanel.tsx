@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Folder, MoreHorizontal, Check, Archive, Calendar, LayoutGrid, Clapperboard, X, ChevronDown, User, Users, PlayCircle, Settings, Trash2, Lock } from 'lucide-react';
+import { Search, Plus, Folder, MoreHorizontal, Check, Archive, Calendar, LayoutGrid, Clapperboard, X, ChevronDown, User, Users, PlayCircle, Settings, Trash2, Lock, PlusCircle } from 'lucide-react';
 import { useStore } from '../../App';
 import { Project } from '../../types';
 
@@ -330,9 +330,11 @@ export const RetrievalPanel: React.FC = () => {
             <div 
                 onMouseDown={handleMouseDown}
                 className="h-1 bg-zinc-900 border-y border-zinc-800 cursor-row-resize hover:bg-indigo-500/20 flex justify-center items-center group shrink-0 z-10"
-            />
+            >
+                <div className="w-8 h-1 bg-zinc-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            </div>
 
-            <div className="flex-1 border-t border-zinc-800 bg-zinc-900/30 p-3 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto border-t border-zinc-800 bg-zinc-900/30 p-3">
                 <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     已交付归档
@@ -349,30 +351,83 @@ export const RetrievalPanel: React.FC = () => {
   };
 
   // 3. SHOWCASE
-  const renderShowcaseGroupTree = () => (
-      <div className="flex-1 flex flex-col p-3">
-          <div className="mb-4">
-              <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">标签云</h3>
-              <div className="flex flex-wrap gap-2 max-h-[128px] overflow-y-auto custom-scrollbar">
-                  {['全部', '广告片', '纪录片', '社交媒体', '4K', '竖屏', '航拍'].map(tag => (
-                      <button 
-                        key={tag}
-                        onClick={() => dispatch({ type: 'SET_TAG', payload: tag })}
-                        className={`text-xs px-2.5 py-1 rounded-full border transition-all ${activeTag === tag ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}
-                      >
-                          {tag}
-                      </button>
-                  ))}
-              </div>
+  const renderShowcaseGroupTree = () => {
+      const caseVideos = state.videos.filter(v => v.isCaseFile);
+      // 标签区域 128px
+      const tagsFromVideos = Array.from(new Set(caseVideos.flatMap(v => v.tags || [])));
+      const availableTags = ['全部', ...tagsFromVideos, '广告片', '纪录片', '社交媒体', '4K', '竖屏', '航拍']
+        .filter((tag, idx, arr) => arr.indexOf(tag) === idx);
+
+      const filteredByTag = activeTag === '全部'
+        ? caseVideos
+        : caseVideos.filter(v => v.tags && v.tags.includes(activeTag));
+
+      return (
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* 标签区域 */}
+          <div className="h-32 p-3 border-b border-zinc-800 shrink-0">
+            <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">标签筛选</h3>
+            <div className="flex flex-wrap gap-2 overflow-y-auto custom-scrollbar h-24">
+              {availableTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => {
+                    dispatch({ type: 'SET_TAG', payload: tag });
+                    const tagFiltered = tag === '全部' ? caseVideos : caseVideos.filter(v => v.tags && v.tags.includes(tag));
+                    dispatch({ type: 'SET_FILTERED_SHOWCASE_VIDEOS', payload: tagFiltered.map(v => v.id) });
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[10px] border transition-colors ${
+                    activeTag === tag
+                      ? 'bg-indigo-500 text-white border-indigo-400'
+                      : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex-1 flex items-center justify-center border-t border-zinc-800">
-               <div className="text-center text-zinc-600 text-xs">
-                   <PlayCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                   正在浏览 {activeTag === '全部' ? '完整案例库' : activeTag}
-               </div>
+
+          {/* 标签筛选结果列表，可一键添加到浏览区 */}
+          <div className="flex-1 overflow-y-auto p-3 custom-scrollbar min-h-0">
+            {filteredByTag.length === 0 ? (
+              <div className="text-xs text-zinc-600 italic px-2 py-4">未找到匹配的案例文件</div>
+            ) : (
+              filteredByTag.map(v => (
+                <div 
+                  key={v.id}
+                  className="flex items-center justify-between p-2 rounded hover:bg-zinc-900 group"
+                >
+                  <div 
+                    onClick={() => dispatch({ type: 'SELECT_VIDEO', payload: v.id })}
+                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                  >
+                    <Clapperboard className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    <span className="text-sm text-zinc-400 hover:text-zinc-200 truncate">
+                      <HighlightText text={v.name} highlight={searchTerm} />
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => dispatch({ type: 'ADD_TO_SHOWCASE_BROWSER', payload: v.id })}
+                    className="opacity-0 group-hover:opacity-100 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs transition-all"
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            )}
+            {filteredByTag.length > 0 && (
+              <button
+                onClick={() => dispatch({ type: 'SET_FILTERED_SHOWCASE_VIDEOS', payload: filteredByTag.map(v => v.id) })}
+                className="w-full mt-3 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium transition-colors"
+              >
+                一键添加全部 ({filteredByTag.length})
+              </button>
+            )}
           </div>
-      </div>
-  );
+        </div>
+      );
+  };
 
   const renderShowcaseMonthTree = () => {
       let caseVideos = videos.filter(v => v.isCaseFile);
@@ -384,10 +439,19 @@ export const RetrievalPanel: React.FC = () => {
           );
       }
       
-      const months = {
-          '2025年 1月': caseVideos.filter((_, i) => i % 2 === 0),
-          '2024年 12月': caseVideos.filter((_, i) => i % 2 !== 0),
-      };
+      // 简单按创建时间月份分组（如果缺省则分到“未分组”）
+      const months: Record<string, typeof caseVideos> = {};
+      caseVideos.forEach(v => {
+          const proj = state.projects.find(p => p.id === v.projectId);
+          const date = proj ? new Date(proj.createdDate) : new Date();
+          const key = `${date.getFullYear()}年 ${date.getMonth() + 1}月`;
+          if (!months[key]) months[key] = [];
+          months[key].push(v);
+      });
+
+      if (Object.keys(months).length === 0) {
+          months['未分组'] = [];
+      }
 
       return (
           <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
@@ -402,13 +466,23 @@ export const RetrievalPanel: React.FC = () => {
                           {monthVideos.map(v => (
                               <div 
                                 key={v.id} 
-                                onClick={() => dispatch({ type: 'SELECT_VIDEO', payload: v.id })}
-                                className="flex items-center gap-2 p-2 rounded hover:bg-zinc-900 cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors"
+                                className="flex items-center justify-between p-2 rounded hover:bg-zinc-900 group"
                               >
-                                  <Clapperboard className="w-3.5 h-3.5" />
-                                  <span className="text-sm truncate">
-                                      <HighlightText text={v.name} highlight={searchTerm} />
-                                  </span>
+                                  <div 
+                                    onClick={() => dispatch({ type: 'SELECT_VIDEO', payload: v.id })}
+                                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors"
+                                  >
+                                      <Clapperboard className="w-3.5 h-3.5" />
+                                      <span className="text-sm truncate">
+                                          <HighlightText text={v.name} highlight={searchTerm} />
+                                      </span>
+                                  </div>
+                                  <button
+                                    onClick={() => dispatch({ type: 'ADD_TO_SHOWCASE_BROWSER', payload: v.id })}
+                                    className="opacity-0 group-hover:opacity-100 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs transition-all"
+                                  >
+                                    <PlusCircle className="w-3 h-3" />
+                                  </button>
                               </div>
                           ))}
                       </div>
@@ -435,22 +509,22 @@ export const RetrievalPanel: React.FC = () => {
                 {activeModule === 'showcase' && '案例遴选'}
             </span>
             <div className="flex items-center gap-1">
-            <div className="flex items-center bg-zinc-950 rounded-lg p-1 mr-2 border border-zinc-800 gap-1">
+            <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
                 <button 
                     onClick={() => setViewMode('month')}
-                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 font-medium text-sm ${viewMode === 'month' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${viewMode === 'month' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="月份视图"
                 >
                     <Calendar className="w-4 h-4" />
-                    <span>月份</span>
+                    月份
                 </button>
                 <button 
                     onClick={() => setViewMode('group')}
-                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 font-medium text-sm ${viewMode === 'group' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${viewMode === 'group' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="分组视图"
                 >
                     <LayoutGrid className="w-4 h-4" />
-                    <span>分组</span>
+                    分组
                 </button>
             </div>
             

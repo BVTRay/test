@@ -27,7 +27,9 @@ const INITIAL_VIDEOS: Video[] = [
 
 const INITIAL_DELIVERIES: DeliveryData[] = [
   { projectId: 'p3', hasCleanFeed: true, hasMusicAuth: false, hasMetadata: true, hasTechReview: false, hasCopyrightCheck: false, hasScript: false, hasCopyrightFiles: false, hasMultiResolution: false }, // Pending
-  { projectId: 'p4', hasCleanFeed: true, hasMusicAuth: true, hasMetadata: true, hasTechReview: true, hasCopyrightCheck: true, hasScript: true, hasCopyrightFiles: true, hasMultiResolution: true, sentDate: '2024-10-25' }, // Delivered
+  { projectId: 'p4', hasCleanFeed: true, hasMusicAuth: true, hasMetadata: true, hasTechReview: true, hasCopyrightCheck: true, hasScript: true, hasCopyrightFiles: true, hasMultiResolution: true, sentDate: '2024-10-25', deliveryTitle: 'Porsche 911 Launch Campaign', deliveryDescription: '最终交付版本，包含所有素材和说明文档。', deliveryPackages: [
+    { id: 'dp1', projectId: 'p4', title: 'Porsche 911 Launch Campaign', description: '最终交付版本，包含所有素材和说明文档。', link: 'https://vioflow.io/delivery/dp1', createdAt: '2024-10-25', downloadCount: 3, isActive: true }
+  ] }, // Delivered
 ];
 
 const initialState: AppState = {
@@ -47,6 +49,11 @@ const initialState: AppState = {
   activeTag: '全部',
   browserViewMode: 'grid',
   browserCardSize: 'medium',
+  deliveryViewMode: 'files',
+  selectedDeliveryFiles: [],
+  showcaseViewMode: 'files',
+  filteredShowcaseVideos: [],
+  showcasePackages: [],
 };
 
 // --- REDUCER ---
@@ -127,6 +134,164 @@ function appReducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         videos: state.videos.map(v => v.id === action.payload.videoId ? { ...v, tags: action.payload.tags } : v)
+      };
+    case 'UPDATE_DELIVERY_NOTE':
+      return {
+        ...state,
+        deliveries: state.deliveries.map(d => 
+          d.projectId === action.payload.projectId ? { ...d, deliveryNote: action.payload.note } : d
+        )
+      };
+    case 'UPDATE_DELIVERY_TITLE':
+      return {
+        ...state,
+        deliveries: state.deliveries.map(d => 
+          d.projectId === action.payload.projectId ? { ...d, deliveryTitle: action.payload.title } : d
+        )
+      };
+    case 'UPDATE_DELIVERY_DESCRIPTION':
+      return {
+        ...state,
+        deliveries: state.deliveries.map(d => 
+          d.projectId === action.payload.projectId ? { ...d, deliveryDescription: action.payload.description } : d
+        )
+      };
+    case 'GENERATE_DELIVERY_LINK': {
+      const delivery = state.deliveries.find(d => d.projectId === action.payload.projectId);
+      if (!delivery || !delivery.deliveryTitle) return state;
+      
+      const newPackage = {
+        id: `dp${Date.now()}`,
+        projectId: action.payload.projectId,
+        title: delivery.deliveryTitle,
+        description: delivery.deliveryDescription || '',
+        link: `https://vioflow.io/delivery/${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        downloadCount: 0,
+        isActive: true
+      };
+      
+      return {
+        ...state,
+        deliveries: state.deliveries.map(d => 
+          d.projectId === action.payload.projectId 
+            ? { ...d, deliveryPackages: [...(d.deliveryPackages || []), newPackage] }
+            : d
+        ),
+        selectedDeliveryFiles: [] // 清空选择
+      };
+    }
+    case 'TOGGLE_DELIVERY_FILE_SELECTION':
+      return {
+        ...state,
+        selectedDeliveryFiles: state.selectedDeliveryFiles.includes(action.payload)
+          ? state.selectedDeliveryFiles.filter(id => id !== action.payload)
+          : [...state.selectedDeliveryFiles, action.payload]
+      };
+    case 'CLEAR_DELIVERY_FILE_SELECTION':
+      return { ...state, selectedDeliveryFiles: [] };
+    case 'ADD_CUSTOM_TAG':
+      // 这个可以存储到系统标签列表中，暂时只返回state
+      return state;
+    case 'TOGGLE_DELIVERY_PACKAGE':
+      return {
+        ...state,
+        deliveries: state.deliveries.map(d => ({
+          ...d,
+          deliveryPackages: d.deliveryPackages?.map(p => 
+            p.id === action.payload.packageId ? { ...p, isActive: action.payload.isActive } : p
+          ) || []
+        }))
+      };
+    case 'SET_DELIVERY_VIEW_MODE':
+      return { ...state, deliveryViewMode: action.payload };
+    // --- SHOWCASE ---
+    case 'SET_SHOWCASE_VIEW_MODE':
+      return { ...state, showcaseViewMode: action.payload };
+    case 'SET_FILTERED_SHOWCASE_VIDEOS':
+      return { ...state, filteredShowcaseVideos: action.payload };
+    case 'ADD_TO_SHOWCASE_BROWSER':
+      return {
+        ...state,
+        filteredShowcaseVideos: state.filteredShowcaseVideos.includes(action.payload)
+          ? state.filteredShowcaseVideos
+          : [...state.filteredShowcaseVideos, action.payload]
+      };
+    case 'CLEAR_SHOWCASE_BROWSER':
+      return { ...state, filteredShowcaseVideos: [] };
+    case 'GENERATE_SHOWCASE_PACKAGE': {
+      const newPackage = {
+        id: `sp${Date.now()}`,
+        title: action.payload.title,
+        description: action.payload.description,
+        mode: action.payload.mode,
+        clientName: action.payload.clientName,
+        link: `https://vioflow.io/showcase/${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        viewCount: 0,
+        isActive: true,
+        items: state.cart.map((videoId, index) => ({
+          videoId,
+          order: index,
+          description: ''
+        }))
+      };
+      return {
+        ...state,
+        showcasePackages: [...state.showcasePackages, newPackage],
+        cart: [] // 清空操作台
+      };
+    }
+    case 'TOGGLE_SHOWCASE_PACKAGE':
+      return {
+        ...state,
+        showcasePackages: state.showcasePackages.map(p => 
+          p.id === action.payload.packageId ? { ...p, isActive: action.payload.isActive } : p
+        )
+      };
+    // --- SHOWCASE ---
+    case 'SET_SHOWCASE_VIEW_MODE':
+      return { ...state, showcaseViewMode: action.payload };
+    case 'SET_FILTERED_SHOWCASE_VIDEOS':
+      return { ...state, filteredShowcaseVideos: action.payload };
+    case 'ADD_TO_SHOWCASE_BROWSER':
+      return {
+        ...state,
+        filteredShowcaseVideos: state.filteredShowcaseVideos.includes(action.payload)
+          ? state.filteredShowcaseVideos
+          : [...state.filteredShowcaseVideos, action.payload]
+      };
+    case 'CLEAR_SHOWCASE_BROWSER':
+      return { ...state, filteredShowcaseVideos: [] };
+    case 'GENERATE_SHOWCASE_PACKAGE': {
+      const newPackage = {
+        id: `sp${Date.now()}`,
+        title: action.payload.title,
+        description: action.payload.description,
+        mode: action.payload.mode,
+        clientName: action.payload.clientName,
+        link: `https://vioflow.io/showcase/${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        viewCount: 0,
+        isActive: true,
+        items: state.cart.map((videoId, index) => ({
+          videoId,
+          order: index,
+          description: ''
+        }))
+      };
+      return {
+        ...state,
+        showcasePackages: [...state.showcasePackages, newPackage],
+        cart: [] // 清空操作台
+      };
+    }
+    case 'TOGGLE_SHOWCASE_PACKAGE':
+      return {
+        ...state,
+        showcasePackages: state.showcasePackages.map(p => 
+          p.id === action.payload.packageId ? { ...p, isActive: action.payload.isActive } : p
+        )
       };
     case 'UPDATE_VIDEO_STATUS':
       return {

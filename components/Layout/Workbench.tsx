@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle2, X, Share, PlaySquare, FileCheck, ShieldAlert, MonitorPlay, GripVertical, FileVideo, AlertCircle, GitBranch, PlusSquare, History, ArrowRight, Upload, FileText, Copyright, Film, Tag, CheckCircle } from 'lucide-react';
+import { UploadCloud, CheckCircle2, X, Share, PlaySquare, FileCheck, ShieldAlert, MonitorPlay, GripVertical, FileVideo, AlertCircle, GitBranch, PlusSquare, History, ArrowRight, Upload, FileText, Copyright, Film, Tag, CheckCircle, Link2, Package, Download, Power } from 'lucide-react';
 import { useStore } from '../../App';
 import { Video, DeliveryData } from '../../types';
 
@@ -34,12 +34,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
       changeLog: ''
   });
 
-  // Tag Modal State
-  const [tagModal, setTagModal] = useState<{ isOpen: boolean; videoId: string | null; selectedTags: string[] }>({
-      isOpen: false,
-      videoId: null,
-      selectedTags: []
-  });
+  // Custom tag input state (for delivery module)
+  const [newTagInput, setNewTagInput] = useState('');
 
   // --- DRAG & DROP HANDLERS ---
   const handleDragOver = (e: React.DragEvent) => {
@@ -410,17 +406,27 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
   const renderDeliveryWorkbench = () => {
     if (!project || !delivery) return <EmptyWorkbench message="请选择一个待交付项目" onClose={handleClose} />;
     
+    // 如果项目已交付，显示对外交付界面
+    if (project.status === 'delivered') {
+      return renderDeliveredWorkbench();
+    }
+    
     const projectVideos = videos.filter(v => v.projectId === project.id);
     const mainDeliveryVideos = projectVideos.filter(v => v.isMainDelivery);
     
-    // 检查是否所有必需项都完成
+    // 检查是否所有必需项都完成（包括标签）
+    const allMainDeliveryHasTags = mainDeliveryVideos.length > 0 && mainDeliveryVideos.every(v => v.tags && v.tags.length > 0);
     const isReady = delivery.hasCleanFeed && 
                     delivery.hasTechReview && 
                     delivery.hasCopyrightCheck && 
                     delivery.hasMetadata &&
-                    mainDeliveryVideos.length > 0; // 至少需要一个主交付文件
+                    mainDeliveryVideos.length > 0 && // 至少需要一个主交付文件
+                    allMainDeliveryHasTags; // 所有主交付文件必须有标签
 
-    const availableTags = ['AI生成', '三维制作', '病毒广告', '剧情', '纪录片', '广告片', '社交媒体', '品牌宣传'];
+    // 获取系统内既有的标签（从所有视频中提取）
+    const existingTags = Array.from(new Set(videos.flatMap(v => v.tags || []))).filter(Boolean);
+    const defaultTags = ['AI生成', '三维制作', '病毒广告', '剧情', '纪录片', '广告片', '社交媒体', '品牌宣传'];
+    const availableTags = Array.from(new Set([...defaultTags, ...existingTags]));
     
     const CheckItem = ({ label, field, required = false }: { label: string, field: keyof DeliveryData, required?: boolean }) => (
         <div 
@@ -483,14 +489,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
         dispatch({ type: 'TOGGLE_MAIN_DELIVERY', payload: videoId });
     };
 
-    const handleOpenTagModal = (videoId: string) => {
-        const video = videos.find(v => v.id === videoId);
-        setTagModal({ isOpen: true, videoId, selectedTags: video?.tags || [] });
-    };
-
-    const handleUpdateTags = (videoId: string, tags: string[]) => {
-        dispatch({ type: 'UPDATE_VIDEO_TAGS', payload: { videoId, tags } });
-        setTagModal({ isOpen: false, videoId: null, selectedTags: [] });
+    const toggleVideoTag = (video: Video, tag: string) => {
+        const current = video.tags || [];
+        const nextTags = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag];
+        dispatch({ type: 'UPDATE_VIDEO_TAGS', payload: { videoId: video.id, tags: nextTags } });
     };
 
     return (
@@ -515,37 +517,53 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
                             <div className="p-4 text-center text-xs text-zinc-500">该项目暂无视频文件</div>
                         ) : (
                             projectVideos.map(v => (
-                                <div key={v.id} className="flex items-center justify-between p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-900 group">
-                                    <div className="flex items-center gap-3 overflow-hidden flex-1">
-                                        <PlaySquare className="w-4 h-4 text-zinc-500 shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-xs text-zinc-300 truncate block">{v.name}</span>
-                                            {v.resolution && (
-                                                <span className="text-[10px] text-zinc-500 mt-0.5 block">{v.resolution}</span>
-                                            )}
+                                <div key={v.id} className="flex flex-col gap-2 p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-900 group">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3 overflow-hidden flex-1">
+                                            <PlaySquare className="w-4 h-4 text-zinc-500 shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-xs text-zinc-300 truncate block">{v.name}</span>
+                                                {v.resolution && (
+                                                    <span className="text-[10px] text-zinc-500 mt-0.5 block">{v.resolution}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => handleToggleMainDelivery(v.id)}
+                                                className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                                                    v.isMainDelivery 
+                                                        ? 'bg-indigo-500 text-white border-indigo-400' 
+                                                        : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-600'
+                                                }`}
+                                            >
+                                                {v.isMainDelivery ? '主交付' : '设为主交付'}
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        {v.isMainDelivery && (
-                                            <button
-                                                onClick={() => handleOpenTagModal(v.id)}
-                                                className="text-[10px] px-2 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
-                                            >
-                                                <Tag className="w-3 h-3" />
-                                                {v.tags && v.tags.length > 0 ? `${v.tags.length}个标签` : '添加标签'}
-                                            </button>
-                                        )}
-                                        <button 
-                                            onClick={() => handleToggleMainDelivery(v.id)}
-                                            className={`text-[10px] px-2 py-1 rounded border transition-colors ${
-                                                v.isMainDelivery 
-                                                    ? 'bg-indigo-500 text-white border-indigo-400' 
-                                                    : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-600'
-                                            }`}
-                                        >
-                                            {v.isMainDelivery ? '主交付' : '设为主交付'}
-                                        </button>
-                                    </div>
+                                    {v.isMainDelivery && (
+                                        <div className="pl-7">
+                                            <div className="text-[10px] text-zinc-500 mb-1">点击标签进行选择（必填）</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {availableTags.map(tag => {
+                                                    const selected = (v.tags || []).includes(tag);
+                                                    return (
+                                                        <button
+                                                            key={tag}
+                                                            onClick={() => toggleVideoTag(v, tag)}
+                                                            className={`px-2.5 py-1 rounded-full text-[10px] border transition-colors ${
+                                                                selected
+                                                                ? 'bg-indigo-500 text-white border-indigo-400'
+                                                                : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                                                            }`}
+                                                        >
+                                                            {selected ? '✓ ' : ''}{tag}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -582,31 +600,46 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
                     </div>
                 </div>
 
-                {/* 4. 交付状态提示 */}
-                {!isReady && (
-                    <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                            <div className="text-xs text-orange-200">
-                                <p className="font-bold mb-1">请完成以下步骤：</p>
-                                <ul className="list-disc list-inside space-y-0.5 text-orange-200/80">
-                                    {!delivery.hasCleanFeed && <li>上传净版视频</li>}
-                                    {mainDeliveryVideos.length === 0 && <li>指定至少一个主交付文件</li>}
-                                    {!delivery.hasTechReview && <li>完成技术审查</li>}
-                                    {!delivery.hasCopyrightCheck && <li>确认版权风险</li>}
-                                    {!delivery.hasMetadata && <li>确认元数据完整</li>}
-                                </ul>
-                            </div>
+                {/* 4. 交付说明 */}
+                <div>
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <FileText className="w-3 h-3" />
+                        交付说明
+                    </h3>
+                    <textarea
+                        value={delivery.deliveryNote || ''}
+                        onChange={(e) => dispatch({ type: 'UPDATE_DELIVERY_NOTE', payload: { projectId: project.id, note: e.target.value } })}
+                        placeholder="请填写该项目的最终交付情况说明..."
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none h-24 placeholder-zinc-600"
+                    />
+                </div>
+
+            {/* 5. 交付状态提示 */}
+            {!isReady && (
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                        <div className="text-xs text-orange-200">
+                            <p className="font-bold mb-1">请完成以下步骤：</p>
+                            <ul className="list-disc list-inside space-y-0.5 text-orange-200/80">
+                                {!delivery.hasCleanFeed && <li>上传净版视频</li>}
+                                {mainDeliveryVideos.length === 0 && <li>指定至少一个主交付文件</li>}
+                                {mainDeliveryVideos.length > 0 && !allMainDeliveryHasTags && <li>给所有主交付文件添加标签（必填）</li>}
+                                {!delivery.hasTechReview && <li>完成技术审查</li>}
+                                {!delivery.hasCopyrightCheck && <li>确认版权风险</li>}
+                                {!delivery.hasMetadata && <li>确认元数据完整</li>}
+                            </ul>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
             </div>
 
-            <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-sm space-y-2">
                  <button 
                     disabled={!isReady}
                     onClick={() => {
-                        if (window.confirm("确认完成交付？这将正式交付项目并更新状态。")) {
+                        if (window.confirm("确认完成交付？这将锁定当前交付内容的状态并更新项目状态。")) {
                             dispatch({ type: 'COMPLETE_DELIVERY', payload: project.id });
                         }
                     }}
@@ -619,65 +652,190 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
                     <FileCheck className="w-4 h-4" />
                     <span>完成交付</span>
                  </button>
+                 <button 
+                    disabled={!isReady}
+                    onClick={() => {
+                        if (window.confirm("确认创建交付链接？这将生成一个交付链接，但不会更新项目状态。")) {
+                            // 创建链接但不完成交付
+                            const tempDelivery = { ...delivery, deliveryTitle: delivery.deliveryTitle || project.name, deliveryDescription: delivery.deliveryDescription || delivery.deliveryNote || '' };
+                            if (tempDelivery.deliveryTitle) {
+                                dispatch({ 
+                                    type: 'GENERATE_DELIVERY_LINK', 
+                                    payload: { projectId: project.id, fileIds: projectVideos.map(v => v.id) } 
+                                });
+                            } else {
+                                alert('请先填写交付标题');
+                            }
+                        }
+                    }}
+                    className={`w-full font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all
+                        ${isReady 
+                            ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20' 
+                            : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                        }`}
+                 >
+                    <Link2 className="w-4 h-4" />
+                    <span>创建链接</span>
+                 </button>
             </div>
 
-            {/* 标签编辑模态框 */}
-            {tagModal.isOpen && tagModal.videoId && (
-                <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
-                        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950 rounded-t-xl">
-                            <h3 className="font-semibold text-zinc-100 flex items-center gap-2">
-                                <Tag className="w-4 h-4 text-indigo-500" />
-                                添加标签
-                            </h3>
-                            <button onClick={() => setTagModal({ isOpen: false, videoId: null, selectedTags: [] })}>
-                                <X className="w-4 h-4 text-zinc-500" />
-                            </button>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">选择标签</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {availableTags.map(tag => (
-                                        <button
-                                            key={tag}
-                                            onClick={() => {
-                                                if (tagModal.selectedTags.includes(tag)) {
-                                                    setTagModal({ ...tagModal, selectedTags: tagModal.selectedTags.filter(t => t !== tag) });
-                                                } else {
-                                                    setTagModal({ ...tagModal, selectedTags: [...tagModal.selectedTags, tag] });
-                                                }
-                                            }}
-                                            className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                                                tagModal.selectedTags.includes(tag)
-                                                    ? 'bg-indigo-500 text-white border-indigo-400'
-                                                    : 'bg-zinc-950 text-zinc-400 border-zinc-700 hover:border-zinc-600'
-                                            }`}
-                                        >
-                                            {tag}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="p-4 border-t border-zinc-800 flex justify-end gap-2 bg-zinc-950 rounded-b-xl">
-                                <button 
-                                    onClick={() => setTagModal({ isOpen: false, videoId: null, selectedTags: [] })} 
-                                    className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-                                >
-                                    取消
-                                </button>
-                                <button 
-                                    onClick={() => tagModal.videoId && handleUpdateTags(tagModal.videoId, tagModal.selectedTags)} 
-                                    className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 transition-all"
-                                >
-                                    保存
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </>
+    );
+  };
+
+  // 已交付项目的对外交付界面
+  const renderDeliveredWorkbench = () => {
+    if (!project || !delivery) return null;
+    const { selectedDeliveryFiles } = state;
+    const projectVideos = videos.filter(v => v.projectId === project.id);
+    const selectedCount = selectedDeliveryFiles.length;
+
+    return (
+      <>
+        <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">对外交付</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">{project.name}</p>
+          </div>
+          <button onClick={handleClose}><X className="w-4 h-4 text-zinc-500 hover:text-zinc-200" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-6">
+          {/* 交付记录 */}
+          {delivery.deliveryPackages && delivery.deliveryPackages.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase mb-2 flex items-center gap-2">
+                <Package className="w-3 h-3" />
+                交付记录
+              </h3>
+              <div className="space-y-2">
+                {delivery.deliveryPackages.map(pkg => (
+                  <div key={pkg.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-zinc-200 mb-1">{pkg.title}</div>
+                        <div className="text-xs text-zinc-500 mb-2">{pkg.description}</div>
+                        <div className="flex items-center gap-4 text-[10px] text-zinc-600">
+                          <span>创建时间：{new Date(pkg.createdAt).toLocaleDateString('zh-CN')}</span>
+                          <span>下载次数：{pkg.downloadCount}</span>
+                          <span className={`px-2 py-0.5 rounded ${pkg.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                            {pkg.isActive ? '已启用' : '已停用'}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => dispatch({ type: 'TOGGLE_DELIVERY_PACKAGE', payload: { packageId: pkg.id, isActive: !pkg.isActive } })}
+                        className={`px-3 py-1.5 rounded text-xs border transition-colors ${
+                          pkg.isActive 
+                            ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 hover:bg-orange-500/30' 
+                            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30'
+                        }`}
+                      >
+                        {pkg.isActive ? '停用' : '启用'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-800">
+                      <input
+                        type="text"
+                        readOnly
+                        value={pkg.link}
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-400 font-mono"
+                      />
+                      <button
+                        onClick={() => navigator.clipboard.writeText(pkg.link)}
+                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs transition-colors"
+                      >
+                        复制
+                      </button>
+                      <button
+                        onClick={() => window.open(pkg.link, '_blank')}
+                        className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs transition-colors"
+                      >
+                        查看
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 选择交付文件提示 */}
+          {selectedCount === 0 && (
+            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-indigo-200">
+                  <p className="font-bold mb-1">请在浏览区选择交付文件</p>
+                  <p className="opacity-80">可以单选或多选文件，然后在此填写交付标题和说明生成交付链接。</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedCount > 0 && (
+            <>
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs text-emerald-200">已选择 {selectedCount} 个文件</span>
+                  <button
+                    onClick={() => dispatch({ type: 'CLEAR_DELIVERY_FILE_SELECTION' })}
+                    className="ml-auto text-xs text-emerald-300 hover:text-emerald-200 underline"
+                  >
+                    清空选择
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">交付标题</label>
+                <input
+                  type="text"
+                  value={delivery.deliveryTitle || ''}
+                  onChange={(e) => dispatch({ type: 'UPDATE_DELIVERY_TITLE', payload: { projectId: project.id, title: e.target.value } })}
+                  placeholder="例如：Porsche 911 Launch Campaign"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none placeholder-zinc-600"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">此标题将作为交付文件夹的文件名</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">交付说明</label>
+                <textarea
+                  value={delivery.deliveryDescription || ''}
+                  onChange={(e) => dispatch({ type: 'UPDATE_DELIVERY_DESCRIPTION', payload: { projectId: project.id, description: e.target.value } })}
+                  placeholder="请填写对外交付的说明，客户将看到此内容..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none h-32 placeholder-zinc-600"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">此说明将生成文本文档存入交付文件夹</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+          <button
+            disabled={!delivery.deliveryTitle || !delivery.deliveryTitle.trim() || selectedCount === 0}
+            onClick={() => {
+              if (window.confirm(`确认生成交付链接？系统将自动打包选中的 ${selectedCount} 个文件并生成交付说明文档。`)) {
+                dispatch({ 
+                  type: 'GENERATE_DELIVERY_LINK', 
+                  payload: { projectId: project.id, fileIds: selectedDeliveryFiles } 
+                });
+              }
+            }}
+            className={`w-full font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all
+              ${delivery.deliveryTitle && delivery.deliveryTitle.trim() && selectedCount > 0
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20' 
+                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              }`}
+          >
+            <Link2 className="w-4 h-4" />
+            <span>生成交付链接</span>
+          </button>
+        </div>
+      </>
     );
   };
 

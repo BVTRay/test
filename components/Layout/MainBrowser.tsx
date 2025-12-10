@@ -1,14 +1,32 @@
 
 import React, { useState } from 'react';
-import { Play, MoreVertical, Plus, Check, Clock, LayoutGrid, List, SlidersHorizontal, FileVideo, Film, CheckCircle2, Share2, AlertTriangle, Lock, Download, Copy, X, ArrowRight } from 'lucide-react';
+import { Play, MoreVertical, Plus, Check, Clock, LayoutGrid, List, SlidersHorizontal, FileVideo, Film, CheckCircle2, Share2, AlertTriangle, Lock, Download, Copy, X, ArrowRight, Package, Power, Eye } from 'lucide-react';
 import { useStore } from '../../App';
-import { Video } from '../../types';
+import { Video, DeliveryPackage } from '../../types';
+import { PreviewPlayer } from './PreviewPlayer';
 
 export const MainBrowser: React.FC = () => {
   const { state, dispatch } = useStore();
-  const { activeModule, showWorkbench, projects, selectedProjectId, videos, cart, searchTerm, browserViewMode, browserCardSize } = state;
+  const { activeModule, showWorkbench, projects, selectedProjectId, selectedVideoId, videos, cart, searchTerm, browserViewMode, browserCardSize, deliveryViewMode, deliveries, selectedDeliveryFiles } = state;
   const project = projects.find(p => p.id === selectedProjectId);
+  const selectedVideo = videos.find(v => v.id === selectedVideoId);
+  const delivery = deliveries.find(d => d.projectId === selectedProjectId);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [previewVideoId, setPreviewVideoId] = useState<string | null>(null);
+  
+  // 已交付项目点击时隐藏操作台
+  React.useEffect(() => {
+    if (activeModule === 'delivery' && project && project.status === 'delivered') {
+      dispatch({ type: 'TOGGLE_WORKBENCH', payload: false });
+    }
+  }, [activeModule, project, dispatch]);
+
+  // 切换项目、模块或视图时自动关闭播放器
+  React.useEffect(() => {
+    if (activeModule === 'delivery' || activeModule === 'showcase') {
+      setPreviewVideoId(null);
+    }
+  }, [activeModule, selectedProjectId, selectedVideoId, deliveryViewMode, state.showcaseViewMode, state.activeTag, state.searchTerm]);
 
   // Share Modal State
   const [shareState, setShareState] = useState<{
@@ -35,8 +53,13 @@ export const MainBrowser: React.FC = () => {
   let displayVideos: Video[] = [];
   
   if (activeModule === 'showcase') {
-      // Showcase: Show all marked 'Case Files', filtered by search
-      displayVideos = videos.filter(v => v.isCaseFile);
+      // Showcase: 临时浏览区优先 filteredShowcaseVideos，否则全部案例文件
+      const caseFiles = videos.filter(v => v.isCaseFile);
+      if (state.filteredShowcaseVideos.length > 0) {
+          displayVideos = caseFiles.filter(v => state.filteredShowcaseVideos.includes(v.id));
+      } else {
+          displayVideos = caseFiles;
+      }
       if (searchTerm) {
           displayVideos = displayVideos.filter(v => v.name.toLowerCase().includes(searchTerm.toLowerCase()));
       }
@@ -266,6 +289,15 @@ export const MainBrowser: React.FC = () => {
   };
 
   const renderContent = () => {
+      // 交付模块：已交付项目且切换到交付包视图
+      if (activeModule === 'delivery' && project && project.status === 'delivered' && deliveryViewMode === 'packages') {
+        return renderDeliveryPackages();
+      }
+      // 案例模块：切换到案例包视图
+      if (activeModule === 'showcase' && state.showcaseViewMode === 'packages') {
+        return renderShowcasePackages();
+      }
+
       const groups = groupVideosBySeries(displayVideos);
       const seriesNames = Object.keys(groups).sort();
 
@@ -299,10 +331,19 @@ export const MainBrowser: React.FC = () => {
                           activeModule={activeModule}
                           isInCart={cart.includes(video.id)}
                           isLatest={true}
-                          onThumbnailClick={() => dispatch({ type: 'TOGGLE_REVIEW_MODE', payload: true })}
+                          isDeliveryDelivered={activeModule === 'delivery' && !!project && project.status === 'delivered'}
+                          isSelected={activeModule === 'delivery' && project && project.status === 'delivered' ? selectedDeliveryFiles.includes(video.id) : false}
+                          onThumbnailClick={() => {
+                            if (activeModule === 'delivery' || activeModule === 'showcase') {
+                              setPreviewVideoId(video.id);
+                            } else {
+                              dispatch({ type: 'TOGGLE_REVIEW_MODE', payload: true });
+                            }
+                          }}
                           onBodyClick={() => dispatch({ type: 'SELECT_VIDEO', payload: video.id })}
                           onToggleCart={() => dispatch({ type: 'TOGGLE_CART_ITEM', payload: video.id })}
                           onShare={() => handleShareClick(video, true)}
+                          onToggleSelection={activeModule === 'delivery' && project && project.status === 'delivered' ? () => dispatch({ type: 'TOGGLE_DELIVERY_FILE_SELECTION', payload: video.id }) : undefined}
                       />
                   ))}
               </div>
@@ -347,10 +388,19 @@ export const MainBrowser: React.FC = () => {
                                         activeModule={activeModule}
                                         isInCart={cart.includes(video.id)}
                                         isLatest={video.id === latestVersionId}
-                                        onThumbnailClick={() => dispatch({ type: 'TOGGLE_REVIEW_MODE', payload: true })}
+                                        isDeliveryDelivered={activeModule === 'delivery' && !!project && project.status === 'delivered'}
+                                        isSelected={activeModule === 'delivery' && project && project.status === 'delivered' ? selectedDeliveryFiles.includes(video.id) : false}
+                                        onThumbnailClick={() => {
+                                          if (activeModule === 'delivery' || activeModule === 'showcase') {
+                                            setPreviewVideoId(video.id);
+                                          } else {
+                                            dispatch({ type: 'TOGGLE_REVIEW_MODE', payload: true });
+                                          }
+                                        }}
                                         onBodyClick={() => dispatch({ type: 'SELECT_VIDEO', payload: video.id })}
                                         onToggleCart={() => dispatch({ type: 'TOGGLE_CART_ITEM', payload: video.id })}
                                         onShare={() => handleShareClick(video, video.id === latestVersionId)}
+                                        onToggleSelection={activeModule === 'delivery' && project && project.status === 'delivered' ? () => dispatch({ type: 'TOGGLE_DELIVERY_FILE_SELECTION', payload: video.id }) : undefined}
                                     />
                                 </div>
                             ))}
@@ -374,21 +424,79 @@ export const MainBrowser: React.FC = () => {
                 </div>
             )}
 
+            {/* Delivery 视图切换 (文件 / 分享记录) */}
+            {activeModule === 'delivery' && project && project.status === 'delivered' && (
+              <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
+                <button
+                  onClick={() => dispatch({ type: 'SET_DELIVERY_VIEW_MODE', payload: 'files' })}
+                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${
+                    deliveryViewMode === 'files'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileVideo className="w-4 h-4" />
+                  文件
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'SET_DELIVERY_VIEW_MODE', payload: 'packages' })}
+                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${
+                    deliveryViewMode === 'packages'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  分享记录
+                </button>
+              </div>
+            )}
+
+            {/* Showcase 视图切换 (文件 / 分享记录) */}
+            {activeModule === 'showcase' && (
+              <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
+                <button
+                  onClick={() => dispatch({ type: 'SET_SHOWCASE_VIEW_MODE', payload: 'files' })}
+                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${
+                    state.showcaseViewMode === 'files'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileVideo className="w-4 h-4" />
+                  文件
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'SET_SHOWCASE_VIEW_MODE', payload: 'packages' })}
+                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${
+                    state.showcaseViewMode === 'packages'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  分享记录
+                </button>
+              </div>
+            )}
+
             {/* View Toggles */}
             <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
                 <button 
                     onClick={() => dispatch({ type: 'SET_BROWSER_VIEW_MODE', payload: 'grid' })}
-                    className={`p-1.5 rounded transition-all ${browserViewMode === 'grid' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${browserViewMode === 'grid' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="分行视图 (版本流)"
                 >
                     <LayoutGrid className="w-4 h-4" />
+                    卡片
                 </button>
                 <button 
                     onClick={() => dispatch({ type: 'SET_BROWSER_VIEW_MODE', payload: 'list' })}
-                    className={`p-1.5 rounded transition-all ${browserViewMode === 'list' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 text-xs font-medium ${browserViewMode === 'list' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
                     title="列表视图 (仅最新版本)"
                 >
                     <List className="w-4 h-4" />
+                    列表
                 </button>
             </div>
 
@@ -436,8 +544,193 @@ export const MainBrowser: React.FC = () => {
 
       {/* RENDER SHARE MODAL */}
       {renderShareModal()}
+
+      {/* RENDER PREVIEW PLAYER for Delivery and Showcase modules */}
+      {previewVideoId && (activeModule === 'delivery' || activeModule === 'showcase') && (() => {
+        const previewVideo = videos.find(v => v.id === previewVideoId);
+        return previewVideo ? (
+          <PreviewPlayer 
+            video={previewVideo} 
+            onClose={() => setPreviewVideoId(null)} 
+          />
+        ) : null;
+      })()}
     </main>
   );
+
+  // 渲染交付包记录
+  function renderDeliveryPackages() {
+    if (!delivery || !delivery.deliveryPackages || delivery.deliveryPackages.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
+          <Package className="w-12 h-12 mb-4 opacity-20" />
+          <p>暂无交付包记录</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {delivery.deliveryPackages.map(pkg => (
+          <div key={pkg.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-zinc-700 transition-colors">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-lg font-semibold text-zinc-200">{pkg.title}</h3>
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    pkg.isActive 
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  }`}>
+                    {pkg.isActive ? '已启用' : '已停用'}
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-400 mb-4">{pkg.description}</p>
+                <div className="flex items-center gap-6 text-xs text-zinc-500">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>创建时间：{new Date(pkg.createdAt).toLocaleString('zh-CN')}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Download className="w-3.5 h-3.5" />
+                    <span>下载次数：{pkg.downloadCount}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => dispatch({ type: 'TOGGLE_DELIVERY_PACKAGE', payload: { packageId: pkg.id, isActive: !pkg.isActive } })}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  pkg.isActive
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+                {pkg.isActive ? '停用链接' : '启用链接'}
+              </button>
+            </div>
+            <div className="pt-4 border-t border-zinc-800">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={pkg.link}
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-mono"
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(pkg.link)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors flex items-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  复制链接
+                </button>
+                <button
+                  onClick={() => window.open(pkg.link, '_blank')}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  查看
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 渲染案例包记录
+  function renderShowcasePackages() {
+    const packages = state.showcasePackages || [];
+    if (packages.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
+          <Package className="w-12 h-12 mb-4 opacity-20" />
+          <p>暂无案例包记录</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {packages.map(pkg => (
+          <div key={pkg.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-zinc-700 transition-colors">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-lg font-semibold text-zinc-200">{pkg.title}</h3>
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    pkg.mode === 'quick_player' 
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
+                      : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                  }`}>
+                    {pkg.mode === 'quick_player' ? '快速分享' : '提案微站'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    pkg.isActive 
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  }`}>
+                    {pkg.isActive ? '已启用' : '已停用'}
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-400 mb-4">{pkg.description}</p>
+                <div className="flex items-center gap-6 text-xs text-zinc-500">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>创建时间：{new Date(pkg.createdAt).toLocaleString('zh-CN')}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>查看次数：{pkg.viewCount}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <FileVideo className="w-3.5 h-3.5" />
+                    <span>包含文件：{pkg.items.length} 个</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => dispatch({ type: 'TOGGLE_SHOWCASE_PACKAGE', payload: { packageId: pkg.id, isActive: !pkg.isActive } })}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  pkg.isActive
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+                {pkg.isActive ? '停用链接' : '启用链接'}
+              </button>
+            </div>
+            <div className="pt-4 border-t border-zinc-800">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={pkg.link}
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 font-mono"
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(pkg.link)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors flex items-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  复制链接
+                </button>
+                <button
+                  onClick={() => window.open(pkg.link, '_blank')}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  查看
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 };
 
 const VideoCard: React.FC<{ 
@@ -447,11 +740,28 @@ const VideoCard: React.FC<{
     activeModule: string;
     isInCart: boolean;
     isLatest: boolean;
+    isSelected?: boolean; // 交付模块选中状态
+    isDeliveryDelivered?: boolean; // 交付模块是否已交付状态
     onThumbnailClick: () => void;
     onBodyClick: () => void;
     onToggleCart: () => void;
     onShare: () => void;
-}> = ({ video, viewMode, cardSize, activeModule, isInCart, isLatest, onThumbnailClick, onBodyClick, onToggleCart, onShare }) => {
+    onToggleSelection?: () => void; // 交付模块选择切换
+}> = ({ 
+    video, 
+    viewMode, 
+    cardSize, 
+    activeModule, 
+    isInCart, 
+    isLatest, 
+    isSelected = false, 
+    isDeliveryDelivered = false,
+    onThumbnailClick, 
+    onBodyClick, 
+    onToggleCart, 
+    onShare,
+    onToggleSelection 
+}) => {
   
   if (viewMode === 'list') {
       // LIST VIEW
@@ -472,7 +782,9 @@ const VideoCard: React.FC<{
         <div 
           onClick={onBodyClick}
           className={`group flex items-center bg-zinc-900/50 border rounded overflow-hidden transition-all cursor-pointer hover:bg-zinc-900
-            ${isInCart ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-zinc-800/50 hover:border-zinc-700'}
+            ${isInCart ? 'border-indigo-500/50 bg-indigo-500/5' : ''}
+            ${isSelected ? 'border-emerald-500/50 bg-emerald-500/5' : ''}
+            ${!isInCart && !isSelected ? 'border-zinc-800/50 hover:border-zinc-700' : ''}
             ${containerClass}
           `}
         >
@@ -513,7 +825,14 @@ const VideoCard: React.FC<{
 
             {/* Action */}
              <div className="px-2 flex items-center gap-2">
-                {activeModule !== 'showcase' && (
+                {isDeliveryDelivered && onToggleSelection ? (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onToggleSelection(); }}
+                        className={`p-1.5 rounded transition-colors ${isSelected ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                    >
+                        {isSelected ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                    </button>
+                ) : activeModule !== 'showcase' ? (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onShare(); }}
                         className={`p-1.5 rounded transition-colors ${isLatest ? 'text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10' : 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800'}`}
@@ -521,18 +840,12 @@ const VideoCard: React.FC<{
                     >
                         <Share2 className="w-4 h-4" />
                     </button>
-                )}
-
-                {activeModule === 'showcase' ? (
+                ) : (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onToggleCart(); }}
                         className={`p-1.5 rounded transition-colors ${isInCart ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
                     >
                         {isInCart ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                    </button>
-                ) : (
-                    <button className="text-zinc-600 hover:text-zinc-300">
-                        <MoreVertical className="w-4 h-4" />
                     </button>
                 )}
              </div>
@@ -552,7 +865,9 @@ const VideoCard: React.FC<{
     <div 
       onClick={onBodyClick}
       className={`group relative bg-zinc-900 border rounded-lg overflow-hidden transition-all cursor-pointer shadow-sm hover:shadow-xl hover:shadow-black/50 flex flex-col h-full
-        ${isInCart ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-zinc-800 hover:border-zinc-600'}
+        ${isInCart ? 'border-indigo-500 ring-1 ring-indigo-500/50' : ''}
+        ${isSelected ? 'border-emerald-500 ring-1 ring-emerald-500/50' : ''}
+        ${!isInCart && !isSelected ? 'border-zinc-800 hover:border-zinc-600' : ''}
       `}
     >
       {/* Thumbnail */}
@@ -587,7 +902,14 @@ const VideoCard: React.FC<{
             <h3 className={`font-medium text-zinc-200 truncate pr-2 group-hover:text-indigo-400 transition-colors ${fontSize}`} title={video.name}>{video.name}</h3>
             
             <div className="flex items-center gap-1">
-                {activeModule !== 'showcase' && (
+                {isDeliveryDelivered && onToggleSelection ? (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onToggleSelection(); }}
+                        className={`p-1 rounded transition-colors ${isSelected ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                    >
+                        {isSelected ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                    </button>
+                ) : activeModule !== 'showcase' ? (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onShare(); }}
                         className={`p-1 rounded transition-colors ${isLatest ? 'text-indigo-400 hover:text-white hover:bg-indigo-500' : 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800'}`}
@@ -595,18 +917,12 @@ const VideoCard: React.FC<{
                     >
                         <Share2 className="w-3.5 h-3.5" />
                     </button>
-                )}
-
-                {activeModule === 'showcase' ? (
+                ) : (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onToggleCart(); }}
                         className={`p-1 rounded transition-colors ${isInCart ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
                     >
                         {isInCart ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                    </button>
-                ) : (
-                    <button className="text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreVertical className="w-4 h-4" />
                     </button>
                 )}
             </div>
