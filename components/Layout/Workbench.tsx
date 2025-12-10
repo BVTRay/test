@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle2, X, Share, PlaySquare, FileCheck, ShieldAlert, MonitorPlay, GripVertical, FileVideo, AlertCircle, GitBranch, PlusSquare, History, ArrowRight } from 'lucide-react';
+import { UploadCloud, CheckCircle2, X, Share, PlaySquare, FileCheck, ShieldAlert, MonitorPlay, GripVertical, FileVideo, AlertCircle, GitBranch, PlusSquare, History, ArrowRight, Upload, FileText, Copyright, Film, Tag, CheckCircle } from 'lucide-react';
 import { useStore } from '../../App';
 import { Video, DeliveryData } from '../../types';
 
@@ -32,6 +32,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
       conflictMode: 'new',
       nextVersion: 1,
       changeLog: ''
+  });
+
+  // Tag Modal State
+  const [tagModal, setTagModal] = useState<{ isOpen: boolean; videoId: string | null; selectedTags: string[] }>({
+      isOpen: false,
+      videoId: null,
+      selectedTags: []
   });
 
   // --- DRAG & DROP HANDLERS ---
@@ -155,6 +162,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
                           version: finalVersion,
                           uploadTime: '刚刚',
                           isCaseFile: false,
+                          isMainDelivery: false,
                           size: (uploadConfig.file!.size / (1024 * 1024)).toFixed(1) + ' MB',
                           duration: '00:00:00', // Mocked
                           resolution: '1920x1080', // Mocked
@@ -403,9 +411,18 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
     if (!project || !delivery) return <EmptyWorkbench message="请选择一个待交付项目" onClose={handleClose} />;
     
     const projectVideos = videos.filter(v => v.projectId === project.id);
-    const isReady = delivery.hasCleanFeed && delivery.hasMusicAuth && delivery.hasMetadata;
+    const mainDeliveryVideos = projectVideos.filter(v => v.isMainDelivery);
+    
+    // 检查是否所有必需项都完成
+    const isReady = delivery.hasCleanFeed && 
+                    delivery.hasTechReview && 
+                    delivery.hasCopyrightCheck && 
+                    delivery.hasMetadata &&
+                    mainDeliveryVideos.length > 0; // 至少需要一个主交付文件
 
-    const CheckItem = ({ label, field }: { label: string, field: keyof DeliveryData }) => (
+    const availableTags = ['AI生成', '三维制作', '病毒广告', '剧情', '纪录片', '广告片', '社交媒体', '品牌宣传'];
+    
+    const CheckItem = ({ label, field, required = false }: { label: string, field: keyof DeliveryData, required?: boolean }) => (
         <div 
             onClick={() => dispatch({ 
                 type: 'UPDATE_DELIVERY_CHECKLIST', 
@@ -416,62 +433,183 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
             <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${delivery[field as keyof DeliveryData] ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-600'}`}>
                 {delivery[field as keyof DeliveryData] && <CheckCircle2 className="w-3.5 h-3.5 text-black" />}
             </div>
-            <span className="text-sm text-zinc-300">{label}</span>
+            <span className="text-sm text-zinc-300 flex-1">{label}</span>
+            {required && <span className="text-[10px] text-orange-400">必需</span>}
         </div>
     );
+
+    const UploadPrompt = ({ icon: Icon, label, field, required = false }: { icon: React.ElementType, label: string, field: keyof DeliveryData, required?: boolean }) => {
+        const isUploaded = delivery[field as keyof DeliveryData];
+        return (
+            <div className={`p-3 rounded-lg border transition-colors ${isUploaded ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'}`}>
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded ${isUploaded ? 'bg-emerald-500/20' : 'bg-zinc-800'}`}>
+                        <Icon className={`w-4 h-4 ${isUploaded ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-zinc-300">{label}</span>
+                            {required && <span className="text-[10px] text-orange-400">必需</span>}
+                        </div>
+                        {isUploaded ? (
+                            <span className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                已上传
+                            </span>
+                        ) : (
+                            <button className="text-[10px] text-indigo-400 hover:text-indigo-300 mt-0.5 flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                点击上传
+                            </button>
+                        )}
+                    </div>
+                    {!isUploaded && (
+                        <button 
+                            onClick={() => dispatch({ 
+                                type: 'UPDATE_DELIVERY_CHECKLIST', 
+                                payload: { projectId: project.id, field, value: true } 
+                            })}
+                            className="text-xs px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors"
+                        >
+                            上传
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    const handleToggleMainDelivery = (videoId: string) => {
+        dispatch({ type: 'TOGGLE_MAIN_DELIVERY', payload: videoId });
+    };
+
+    const handleOpenTagModal = (videoId: string) => {
+        const video = videos.find(v => v.id === videoId);
+        setTagModal({ isOpen: true, videoId, selectedTags: video?.tags || [] });
+    };
+
+    const handleUpdateTags = (videoId: string, tags: string[]) => {
+        dispatch({ type: 'UPDATE_VIDEO_TAGS', payload: { videoId, tags } });
+        setTagModal({ isOpen: false, videoId: null, selectedTags: [] });
+    };
 
     return (
         <>
             <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-900 flex justify-between items-center">
                 <div>
-                    <h2 className="text-sm font-semibold text-zinc-100">交付检查清单</h2>
+                    <h2 className="text-sm font-semibold text-zinc-100">交付操作台</h2>
                     <p className="text-xs text-zinc-500 mt-0.5">{project.name}</p>
                 </div>
                 <button onClick={handleClose}><X className="w-4 h-4 text-zinc-500 hover:text-zinc-200" /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-6">
-                {/* 1. File Uploads */}
+                {/* 1. 指定主交付文件 */}
                 <div>
-                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">必要文件</h3>
-                    <div className="space-y-2">
-                        <CheckItem label="纯净版 (Clean Feed - ProRes 422)" field="hasCleanFeed" />
-                        <CheckItem label="音乐版权 / 场记表" field="hasMusicAuth" />
-                    </div>
-                </div>
-
-                {/* 2. Case File Selection */}
-                <div>
-                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">标记案例视频</h3>
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
-                        {projectVideos.map(v => (
-                            <div key={v.id} className="flex items-center justify-between p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-900">
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <PlaySquare className="w-4 h-4 text-zinc-500 shrink-0" />
-                                    <span className="text-xs text-zinc-300 truncate">{v.name}</span>
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <Film className="w-3 h-3" />
+                        指定主交付文件
+                    </h3>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden mb-2">
+                        {projectVideos.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-zinc-500">该项目暂无视频文件</div>
+                        ) : (
+                            projectVideos.map(v => (
+                                <div key={v.id} className="flex items-center justify-between p-3 border-b border-zinc-800 last:border-0 hover:bg-zinc-900 group">
+                                    <div className="flex items-center gap-3 overflow-hidden flex-1">
+                                        <PlaySquare className="w-4 h-4 text-zinc-500 shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <span className="text-xs text-zinc-300 truncate block">{v.name}</span>
+                                            {v.resolution && (
+                                                <span className="text-[10px] text-zinc-500 mt-0.5 block">{v.resolution}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {v.isMainDelivery && (
+                                            <button
+                                                onClick={() => handleOpenTagModal(v.id)}
+                                                className="text-[10px] px-2 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
+                                            >
+                                                <Tag className="w-3 h-3" />
+                                                {v.tags && v.tags.length > 0 ? `${v.tags.length}个标签` : '添加标签'}
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={() => handleToggleMainDelivery(v.id)}
+                                            className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                                                v.isMainDelivery 
+                                                    ? 'bg-indigo-500 text-white border-indigo-400' 
+                                                    : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-600'
+                                            }`}
+                                        >
+                                            {v.isMainDelivery ? '主交付' : '设为主交付'}
+                                        </button>
+                                    </div>
                                 </div>
-                                <button 
-                                    onClick={() => dispatch({ type: 'TOGGLE_CASE_FILE', payload: v.id })}
-                                    className={`text-[10px] px-2 py-1 rounded border transition-colors ${v.isCaseFile ? 'bg-indigo-500 text-white border-indigo-400' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
-                                >
-                                    {v.isCaseFile ? '案例文件' : '标记'}
-                                </button>
-                            </div>
-                        ))}
+                            ))
+                        )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-2">
+                        主交付文件将在案例模块中展示，通常为适合网络传播和观看的H.264版本。可以指定一个或多个视频。
+                    </p>
+                </div>
+
+                {/* 2. 文件上传提示 */}
+                <div>
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <UploadCloud className="w-3 h-3" />
+                        文件上传
+                    </h3>
+                    <div className="space-y-2">
+                        <UploadPrompt icon={Film} label="净版视频 (Clean Feed)" field="hasCleanFeed" required />
+                        <UploadPrompt icon={FileVideo} label="不同分辨率文件" field="hasMultiResolution" />
+                        <UploadPrompt icon={FileText} label="视频文稿" field="hasScript" />
+                        <UploadPrompt icon={Copyright} label="版权文件" field="hasCopyrightFiles" />
                     </div>
                 </div>
 
-                {/* 3. Final Checks */}
+                {/* 3. 流程检查 */}
                 <div>
-                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">验证</h3>
-                    <CheckItem label="元数据已验证" field="hasMetadata" />
+                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <CheckCircle className="w-3 h-3" />
+                        流程检查
+                    </h3>
+                    <div className="space-y-2">
+                        <CheckItem label="技术审查通过 ✅" field="hasTechReview" required />
+                        <CheckItem label="字体/音乐/视频版权风险确认 ✅" field="hasCopyrightCheck" required />
+                        <CheckItem label="元数据完整 ✅" field="hasMetadata" required />
+                    </div>
                 </div>
+
+                {/* 4. 交付状态提示 */}
+                {!isReady && (
+                    <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+                        <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                            <div className="text-xs text-orange-200">
+                                <p className="font-bold mb-1">请完成以下步骤：</p>
+                                <ul className="list-disc list-inside space-y-0.5 text-orange-200/80">
+                                    {!delivery.hasCleanFeed && <li>上传净版视频</li>}
+                                    {mainDeliveryVideos.length === 0 && <li>指定至少一个主交付文件</li>}
+                                    {!delivery.hasTechReview && <li>完成技术审查</li>}
+                                    {!delivery.hasCopyrightCheck && <li>确认版权风险</li>}
+                                    {!delivery.hasMetadata && <li>确认元数据完整</li>}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
                  <button 
                     disabled={!isReady}
-                    onClick={() => dispatch({ type: 'COMPLETE_DELIVERY', payload: project.id })}
+                    onClick={() => {
+                        if (window.confirm("确认完成交付？这将正式交付项目并更新状态。")) {
+                            dispatch({ type: 'COMPLETE_DELIVERY', payload: project.id });
+                        }
+                    }}
                     className={`w-full font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all
                         ${isReady 
                             ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' 
@@ -482,6 +620,63 @@ export const Workbench: React.FC<WorkbenchProps> = ({ visible }) => {
                     <span>完成交付</span>
                  </button>
             </div>
+
+            {/* 标签编辑模态框 */}
+            {tagModal.isOpen && tagModal.videoId && (
+                <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950 rounded-t-xl">
+                            <h3 className="font-semibold text-zinc-100 flex items-center gap-2">
+                                <Tag className="w-4 h-4 text-indigo-500" />
+                                添加标签
+                            </h3>
+                            <button onClick={() => setTagModal({ isOpen: false, videoId: null, selectedTags: [] })}>
+                                <X className="w-4 h-4 text-zinc-500" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">选择标签</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {availableTags.map(tag => (
+                                        <button
+                                            key={tag}
+                                            onClick={() => {
+                                                if (tagModal.selectedTags.includes(tag)) {
+                                                    setTagModal({ ...tagModal, selectedTags: tagModal.selectedTags.filter(t => t !== tag) });
+                                                } else {
+                                                    setTagModal({ ...tagModal, selectedTags: [...tagModal.selectedTags, tag] });
+                                                }
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                                                tagModal.selectedTags.includes(tag)
+                                                    ? 'bg-indigo-500 text-white border-indigo-400'
+                                                    : 'bg-zinc-950 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                                            }`}
+                                        >
+                                            {tag}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="p-4 border-t border-zinc-800 flex justify-end gap-2 bg-zinc-950 rounded-b-xl">
+                                <button 
+                                    onClick={() => setTagModal({ isOpen: false, videoId: null, selectedTags: [] })} 
+                                    className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button 
+                                    onClick={() => tagModal.videoId && handleUpdateTags(tagModal.videoId, tagModal.selectedTags)} 
+                                    className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 transition-all"
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
   };

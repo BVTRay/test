@@ -19,15 +19,15 @@ const INITIAL_PROJECTS: Project[] = [
 ];
 
 const INITIAL_VIDEOS: Video[] = [
-  { id: 'v1', projectId: 'p1', name: 'v4_Nike_AirMax.mp4', type: 'video', url: '', version: 4, uploadTime: '2小时前', isCaseFile: false, size: '2.4 GB', duration: '00:01:30', resolution: '3840x2160', status: 'initial', changeLog: '调整了结尾Logo的入场动画' },
-  { id: 'v2', projectId: 'p1', name: 'v3_Nike_AirMax.mp4', type: 'video', url: '', version: 3, uploadTime: '昨天', isCaseFile: false, size: '2.4 GB', duration: '00:01:30', resolution: '3840x2160', status: 'annotated', changeLog: '根据客户意见修改了调色' },
-  { id: 'v3', projectId: 'p4', name: 'v12_Porsche_Launch_Master.mov', type: 'video', url: '', version: 12, uploadTime: '2周前', isCaseFile: true, size: '42 GB', duration: '00:00:60', resolution: '4096x2160', status: 'approved', changeLog: '最终定版' },
-  { id: 'v4', projectId: 'p3', name: 'v8_Netflix_Ep1_Lock.mp4', type: 'video', url: '', version: 8, uploadTime: '3天前', isCaseFile: false, size: '1.8 GB', duration: '00:45:00', resolution: '1920x1080', status: 'initial', changeLog: '粗剪定版' },
+  { id: 'v1', projectId: 'p1', name: 'v4_Nike_AirMax.mp4', type: 'video', url: '', version: 4, uploadTime: '2小时前', isCaseFile: false, isMainDelivery: false, size: '2.4 GB', duration: '00:01:30', resolution: '3840x2160', status: 'initial', changeLog: '调整了结尾Logo的入场动画' },
+  { id: 'v2', projectId: 'p1', name: 'v3_Nike_AirMax.mp4', type: 'video', url: '', version: 3, uploadTime: '昨天', isCaseFile: false, isMainDelivery: false, size: '2.4 GB', duration: '00:01:30', resolution: '3840x2160', status: 'annotated', changeLog: '根据客户意见修改了调色' },
+  { id: 'v3', projectId: 'p4', name: 'v12_Porsche_Launch_Master.mov', type: 'video', url: '', version: 12, uploadTime: '2周前', isCaseFile: true, isMainDelivery: true, size: '42 GB', duration: '00:00:60', resolution: '4096x2160', status: 'approved', changeLog: '最终定版', tags: ['三维制作'] },
+  { id: 'v4', projectId: 'p3', name: 'v8_Netflix_Ep1_Lock.mp4', type: 'video', url: '', version: 8, uploadTime: '3天前', isCaseFile: false, isMainDelivery: false, size: '1.8 GB', duration: '00:45:00', resolution: '1920x1080', status: 'initial', changeLog: '粗剪定版' },
 ];
 
 const INITIAL_DELIVERIES: DeliveryData[] = [
-  { projectId: 'p3', hasCleanFeed: true, hasMusicAuth: false, hasMetadata: true }, // Pending
-  { projectId: 'p4', hasCleanFeed: true, hasMusicAuth: true, hasMetadata: true, sentDate: '2024-10-25' }, // Delivered
+  { projectId: 'p3', hasCleanFeed: true, hasMusicAuth: false, hasMetadata: true, hasTechReview: false, hasCopyrightCheck: false, hasScript: false, hasCopyrightFiles: false, hasMultiResolution: false }, // Pending
+  { projectId: 'p4', hasCleanFeed: true, hasMusicAuth: true, hasMetadata: true, hasTechReview: true, hasCopyrightCheck: true, hasScript: true, hasCopyrightFiles: true, hasMultiResolution: true, sentDate: '2024-10-25' }, // Delivered
 ];
 
 const initialState: AppState = {
@@ -95,7 +95,7 @@ function appReducer(state: AppState, action: Action): AppState {
       const deliveryExists = state.deliveries.find(d => d.projectId === action.payload);
       const newDeliveries = deliveryExists 
         ? state.deliveries 
-        : [...state.deliveries, { projectId: action.payload, hasCleanFeed: false, hasMusicAuth: false, hasMetadata: false }];
+        : [...state.deliveries, { projectId: action.payload, hasCleanFeed: false, hasMusicAuth: false, hasMetadata: false, hasTechReview: false, hasCopyrightCheck: false, hasScript: false, hasCopyrightFiles: false, hasMultiResolution: false }];
       
       return { ...state, projects: updatedProjects, deliveries: newDeliveries, selectedProjectId: null };
     }
@@ -117,6 +117,16 @@ function appReducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         videos: state.videos.map(v => v.id === action.payload ? { ...v, isCaseFile: !v.isCaseFile } : v)
+      };
+    case 'TOGGLE_MAIN_DELIVERY':
+      return {
+        ...state,
+        videos: state.videos.map(v => v.id === action.payload ? { ...v, isMainDelivery: !v.isMainDelivery, isCaseFile: true } : v)
+      };
+    case 'UPDATE_VIDEO_TAGS':
+      return {
+        ...state,
+        videos: state.videos.map(v => v.id === action.payload.videoId ? { ...v, tags: action.payload.tags } : v)
       };
     case 'UPDATE_VIDEO_STATUS':
       return {

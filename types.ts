@@ -12,11 +12,13 @@ export interface Video {
   version: number;
   uploadTime: string;
   isCaseFile: boolean; // Marked for Showcase
+  isMainDelivery: boolean; // Marked as main delivery file (H.264 for showcase)
   size: string;
   duration?: string;
   resolution?: string; // e.g., '1920x1080'
   status: VideoStatus;
   changeLog?: string;
+  tags?: string[]; // Tags like 'AI生成', '三维制作', '病毒广告', '剧情' etc.
 }
 
 export interface Project {
@@ -36,6 +38,11 @@ export interface DeliveryData {
   hasCleanFeed: boolean;
   hasMusicAuth: boolean;
   hasMetadata: boolean;
+  hasTechReview: boolean; // 技术审查通过
+  hasCopyrightCheck: boolean; // 字体/音乐/视频版权风险确认
+  hasScript: boolean; // 视频文稿
+  hasCopyrightFiles: boolean; // 版权文件
+  hasMultiResolution: boolean; // 不同分辨率文件（可选）
   packageLink?: string;
   sentDate?: string;
 }
@@ -90,6 +97,8 @@ export type Action =
   | { type: 'COMPLETE_DELIVERY'; payload: string } // Delivery -> Archive/Showcase Source
   | { type: 'UPDATE_DELIVERY_CHECKLIST'; payload: { projectId: string; field: keyof DeliveryData; value: boolean } }
   | { type: 'TOGGLE_CASE_FILE'; payload: string } // Toggle isCaseFile on a Video
+  | { type: 'TOGGLE_MAIN_DELIVERY'; payload: string } // Toggle isMainDelivery on a Video
+  | { type: 'UPDATE_VIDEO_TAGS'; payload: { videoId: string; tags: string[] } } // Update video tags
   | { type: 'TOGGLE_CART_ITEM'; payload: string } // Showcase Cart
   | { type: 'SET_SEARCH'; payload: string }
   | { type: 'SET_TAG'; payload: string }
